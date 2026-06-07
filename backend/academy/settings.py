@@ -14,8 +14,7 @@ if _railway_domain:
     ALLOWED_HOSTS.append(_railway_domain)
 
 # Also allow all *.up.railway.app subdomains automatically so no manual config is needed.
-if '.railway.app' not in str(ALLOWED_HOSTS):
-    ALLOWED_HOSTS.append('.railway.app')
+ALLOWED_HOSTS += ['.railway.app', '.up.railway.app']
 
 INSTALLED_APPS = [
     "django.contrib.admin",
