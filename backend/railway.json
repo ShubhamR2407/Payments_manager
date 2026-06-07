@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "releaseCommand": "python manage.py migrate --noinput && python manage.py seed_data --flush",
+    "releaseCommand": "python manage.py migrate --noinput",
     "startCommand": "gunicorn academy.wsgi --bind 0.0.0.0:$PORT --workers 3",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5
