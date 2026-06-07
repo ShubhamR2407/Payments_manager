@@ -31,7 +31,7 @@ from django.db import transaction
 from core.models import (
     EloRateTier, Trainer, Student, BankAccount, Batch, Enrollment,
     Camp, CampEnrollment, AttendanceRecord, TrainerAttendance,
-    PaymentCycle, Payment, TrainerPayroll, MonthlyExpense,
+    PaymentCycle, Payment, TrainerPayroll, MonthlyExpense, WhatsAppReminder,
 )
 from core.fee_calculator import (
     calculate_batch_fee, calculate_camp_fee,
@@ -56,24 +56,9 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('Flushing existing data...'))
             self._flush()
 
-        today = date.today()
-        month, year = today.month, today.year
-
         self.stdout.write('Seeding data...')
 
-        admin = self._seed_admin()
-        self._seed_elo_tiers()
-        banks = self._seed_banks()
-        trainers = self._seed_trainers()
-        batches = self._seed_batches(trainers)
-        students = self._seed_students()
-        self._seed_enrollments(students, batches, month, year)
-        self._seed_attendance(month, year)
-        camp = self._seed_camp(trainers, students, month, year)
-        self._seed_payment_cycles(month, year)
-        self._seed_payments(admin, trainers, banks, month, year)
-        self._seed_payroll(trainers, month, year)
-        self._seed_expenses(month, year)
+        self._seed_admin()
 
         self.stdout.write(self.style.SUCCESS('\n✅ Seed complete!\n'))
         self._print_credentials()
@@ -94,23 +79,26 @@ class Command(BaseCommand):
         MonthlyExpense.objects.all().delete()
         EloRateTier.objects.all().delete()
         BankAccount.objects.all().delete()
-        User.objects.filter(is_superuser=False).delete()
+        WhatsAppReminder.objects.all().delete()
+        User.objects.all().delete()
 
     # ------------------------------------------------------------------ #
     def _seed_admin(self):
-        admin, created = User.objects.get_or_create(
-            username='admin',
+        admin, _ = User.objects.get_or_create(
+            username='admin@gmail.com',
             defaults={
-                'email': 'admin@chessacademy.com',
-                'first_name': 'Academy', 'last_name': 'Owner',
+                'email': 'admin@gmail.com',
+                'first_name': 'Super', 'last_name': 'Admin',
                 'role': 'admin', 'is_staff': True, 'is_superuser': True,
-                'phone': '9000000000', 'whatsapp_number': '+919000000000',
             }
         )
-        if created:
-            admin.set_password('admin123')
-            admin.save()
-            self.stdout.write('  • Created admin user (admin / admin123)')
+        admin.email = 'admin@gmail.com'
+        admin.is_staff = True
+        admin.is_superuser = True
+        admin.role = 'admin'
+        admin.set_password('Admin@123')
+        admin.save()
+        self.stdout.write('  • Created super admin (admin@gmail.com / Admin@123)')
         return admin
 
     def _seed_elo_tiers(self):
@@ -428,6 +416,5 @@ class Command(BaseCommand):
 
     def _print_credentials(self):
         self.stdout.write(self.style.HTTP_INFO('Login credentials:'))
-        self.stdout.write('  Admin   : admin / admin123')
-        self.stdout.write('  Trainers: coach_arjun, coach_priya, coach_rohit, coach_neha / trainer123')
+        self.stdout.write('  Super Admin : admin@gmail.com / Admin@123')
         self.stdout.write('')
