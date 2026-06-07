@@ -115,20 +115,27 @@ class Command(BaseCommand):
 
     def _seed_elo_tiers(self):
         # Per session type, three ELO brackets each.
+        # Residential bills per-day; individual & home_tutoring bill per-hour.
         tiers = []
         for stype in ('residential', 'individual', 'home_tutoring'):
             base = {'residential': 1000, 'individual': 600, 'home_tutoring': 800}[stype]
+            # per-hour rate for individual/home (None for residential)
+            hour_base = {'residential': None, 'individual': 400, 'home_tutoring': 500}[stype]
             tiers += [
-                (stype, 0, 1499, base),
-                (stype, 1500, 1999, base + 500),
-                (stype, 2000, None, base + 1000),
+                (stype, 0, 1499, base, hour_base),
+                (stype, 1500, 1999, base + 500, (hour_base + 150) if hour_base else None),
+                (stype, 2000, None, base + 1000, (hour_base + 300) if hour_base else None),
             ]
-        for stype, emin, emax, rate in tiers:
+        for stype, emin, emax, rate, hour_rate in tiers:
             EloRateTier.objects.get_or_create(
                 session_type=stype, elo_min=emin,
-                defaults={'elo_max': emax, 'rate_per_day': Decimal(rate)},
+                defaults={
+                    'elo_max': emax,
+                    'rate_per_day': Decimal(rate),
+                    'rate_per_hour': Decimal(hour_rate) if hour_rate else None,
+                },
             )
-        self.stdout.write('  • Created ELO rate tiers (9 brackets)')
+        self.stdout.write('  • Created ELO rate tiers (9 brackets, incl. per-hour rates)')
 
     def _seed_banks(self):
         banks = {}
@@ -215,18 +222,19 @@ class Command(BaseCommand):
         return b
 
     def _seed_students(self):
+        # name, parent, city, dob, elo_rating
         names = [
-            ('Aarav Gupta', 'Suresh Gupta'),
-            ('Diya Singh', 'Rajesh Singh'),
-            ('Vivaan Reddy', 'Kiran Reddy'),
-            ('Ananya Nair', 'Mohan Nair'),
-            ('Ishaan Joshi', 'Deepak Joshi'),
-            ('Saanvi Rao', 'Venkat Rao'),
-            ('Kabir Khan', 'Imran Khan'),
-            ('Myra Desai', 'Nikhil Desai'),
+            ('Aarav Gupta', 'Suresh Gupta', 'Mumbai', date(2014, 3, 12), 1100),
+            ('Diya Singh', 'Rajesh Singh', 'Delhi', date(2013, 7, 5), 1250),
+            ('Vivaan Reddy', 'Kiran Reddy', 'Hyderabad', date(2015, 1, 22), None),
+            ('Ananya Nair', 'Mohan Nair', 'Kochi', date(2012, 11, 9), 1450),
+            ('Ishaan Joshi', 'Deepak Joshi', 'Pune', date(2014, 5, 30), 980),
+            ('Saanvi Rao', 'Venkat Rao', 'Bengaluru', date(2013, 9, 17), 1320),
+            ('Kabir Khan', 'Imran Khan', 'Lucknow', date(2011, 2, 14), 1600),
+            ('Myra Desai', 'Nikhil Desai', 'Ahmedabad', date(2015, 8, 3), None),
         ]
         students = []
-        for i, (name, parent) in enumerate(names):
+        for i, (name, parent, city, dob, elo) in enumerate(names):
             s, _ = Student.objects.get_or_create(
                 name=name,
                 defaults=dict(
@@ -235,10 +243,14 @@ class Command(BaseCommand):
                     whatsapp_number=f'+9190000000{i:02d}',
                     join_date=date(2025, 1, 15),
                     is_active=True,
+                    city=city,
+                    dob=dob,
+                    elo_rating=elo,
+                    address=f'{i+1}, MG Road, {city}',
                 )
             )
             students.append(s)
-        self.stdout.write('  • Created students (8)')
+        self.stdout.write('  • Created students (8, with DOB/city/ELO)')
         return students
 
     def _seed_enrollments(self, students, batches, month, year):
@@ -296,9 +308,13 @@ class Command(BaseCommand):
             for i, cd in enumerate(attend):
                 # advanced: alternate full/half day to test both rates
                 stype = 'half' if (btype == 'advanced' and i % 3 == 0) else 'full'
+                # individual/home tutoring: log hours for per-hour billing
+                hours = None
+                if btype in ('individual', 'home_tutoring'):
+                    hours = Decimal(['1.0', '1.5', '2.0', '1.0'][i % 4])
                 _, created = AttendanceRecord.objects.get_or_create(
                     enrollment=e, date=cd,
-                    defaults={'present': True, 'session_type': stype},
+                    defaults={'present': True, 'session_type': stype, 'hours': hours},
                 )
                 if created:
                     count += 1
