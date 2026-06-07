@@ -1,2 +1,1 @@
-release: python manage.py migrate --noinput && python manage.py collectstatic --noinput && if [ "$SEED_ON_DEPLOY" = "true" ]; then python manage.py seed_data --flush; fi
 web: gunicorn academy.wsgi --bind 0.0.0.0:$PORT --workers 3
