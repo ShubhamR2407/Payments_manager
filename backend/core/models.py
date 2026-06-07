@@ -19,6 +19,8 @@ class EloRateTier(models.Model):
     elo_min = models.IntegerField()
     elo_max = models.IntegerField(null=True, blank=True, help_text="Leave blank for no upper limit")
     rate_per_day = models.DecimalField(max_digits=10, decimal_places=2)
+    rate_per_hour = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True,
+                                        help_text="Used for Individual and Home Tutoring sessions")
 
     class Meta:
         ordering = ['session_type', 'elo_min']
@@ -48,6 +50,10 @@ class Student(models.Model):
     whatsapp_number = models.CharField(max_length=15)
     join_date = models.DateField()
     is_active = models.BooleanField(default=True)
+    dob = models.DateField(null=True, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    address = models.TextField(blank=True)
+    elo_rating = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return self.name
@@ -94,6 +100,7 @@ class Enrollment(models.Model):
     batch = models.ForeignKey(Batch, on_delete=models.PROTECT, related_name='enrollments')
     join_date = models.DateField()
     is_active = models.BooleanField(default=True)
+    deactivation_date = models.DateField(null=True, blank=True)
     fee_override = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True,
                                         help_text="Override auto-calculated fee if needed")
 
@@ -140,6 +147,8 @@ class AttendanceRecord(models.Model):
     date = models.DateField()
     present = models.BooleanField(default=False)
     session_type = models.CharField(max_length=10, choices=SESSION_TYPE, default='full')
+    hours = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True,
+                                help_text="Hours for individual/home tutoring sessions")
 
     class Meta:
         unique_together = ['enrollment', 'date']

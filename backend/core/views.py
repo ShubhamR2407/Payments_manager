@@ -25,6 +25,7 @@ from .serializers import (
 from .permissions import IsAdmin, IsAdminOrTrainer
 from .fee_calculator import calculate_batch_fee, calculate_camp_fee, get_classes_attended, get_total_classes
 from .whatsapp import send_whatsapp_message, build_payment_reminder_message
+from .email_utils import send_trainer_credentials
 
 User = get_user_model()
 
@@ -80,6 +81,65 @@ class TrainerViewSet(viewsets.ModelViewSet):
     queryset = Trainer.objects.select_related('user').all()
     serializer_class = TrainerSerializer
     permission_classes = [IsAdmin]
+
+    @action(detail=False, methods=['post'])
+    def create_with_user(self, request):
+        """
+        Create a trainer account: auto-generates username + temp password,
+        creates User + Trainer, sends credentials via SendGrid.
+        Body: { first_name, last_name, email, phone, elo_rating, monthly_salary, max_level }
+        """
+        import secrets
+        import string
+
+        first_name = request.data.get('first_name', '').strip()
+        last_name = request.data.get('last_name', '').strip()
+        email = request.data.get('email', '').strip()
+        phone = request.data.get('phone', '').strip()
+        elo_rating = int(request.data.get('elo_rating', 1200))
+        monthly_salary = request.data.get('monthly_salary')
+        max_level = request.data.get('max_level', 'advanced')
+
+        if not first_name or not email or not monthly_salary:
+            return Response({'error': 'first_name, email, and monthly_salary are required'}, status=400)
+
+        # Generate username from first_name + last_name
+        base = (first_name + last_name).lower().replace(' ', '')
+        username = base
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base}{counter}"
+            counter += 1
+
+        # Generate temp password
+        alphabet = string.ascii_letters + string.digits
+        password = ''.join(secrets.choice(alphabet) for _ in range(12))
+
+        user = User(
+            username=username,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            role='trainer',
+            phone=phone,
+        )
+        user.set_password(password)
+        user.save()
+
+        trainer = Trainer.objects.create(
+            user=user,
+            elo_rating=elo_rating,
+            monthly_salary=monthly_salary,
+            max_level=max_level,
+        )
+
+        email_result = send_trainer_credentials(email, user.get_full_name(), username, password)
+
+        return Response({
+            'trainer': TrainerSerializer(trainer).data,
+            'credentials': {'username': username, 'password': password},
+            'email_sent': email_result.get('success', False),
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'])
     def stats(self, request, pk=None):
@@ -177,6 +237,41 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             qs = qs.filter(student_id=student_id)
         return qs
 
+    @action(detail=True, methods=['post'])
+    def deactivate(self, request, pk=None):
+        """
+        Deactivate this enrollment (and optionally all enrollments for the student).
+        Body: { deactivate_all: bool }
+        Applies mid-month fee rule: if student attended ≤ half the classes this month,
+        fee is halved for current cycle.
+        """
+        enrollment = self.get_object()
+        deactivate_all = request.data.get('deactivate_all', False)
+        today = date.today()
+
+        def _deactivate_enrollment(enr):
+            enr.is_active = False
+            enr.deactivation_date = today
+            enr.save()
+            # Mid-month fee rule: find or create current cycle
+            cycle = PaymentCycle.objects.filter(
+                enrollment=enr, month=today.month, year=today.year
+            ).first()
+            if cycle and cycle.status != 'paid':
+                total = cycle.total_classes or 1
+                attended = cycle.classes_attended or 0
+                if attended <= total / 2:
+                    cycle.fee_due = cycle.fee_due / 2
+                    cycle.save()
+
+        if deactivate_all:
+            for enr in Enrollment.objects.filter(student=enrollment.student, is_active=True):
+                _deactivate_enrollment(enr)
+        else:
+            _deactivate_enrollment(enrollment)
+
+        return Response({'message': 'Deactivated successfully'})
+
 
 class CampViewSet(viewsets.ModelViewSet):
     queryset = Camp.objects.select_related('trainer').all()
@@ -246,13 +341,48 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             enrollment_id = rec.get('enrollment_id')
             present = rec.get('present', False)
             session_type = rec.get('session_type', 'full')
+            hours = rec.get('hours')
             obj, created = AttendanceRecord.objects.update_or_create(
                 enrollment_id=enrollment_id,
                 date=date_str,
-                defaults={'present': present, 'session_type': session_type}
+                defaults={'present': present, 'session_type': session_type, 'hours': hours}
             )
             results.append(AttendanceRecordSerializer(obj).data)
         return Response(results)
+
+    @action(detail=False, methods=['get'])
+    def student_summary(self, request):
+        """
+        Attendance summary for a student over a month or date range.
+        Params: enrollment_id, month, year (or date_from + date_to)
+        """
+        enrollment_id = request.query_params.get('enrollment_id')
+        month = request.query_params.get('month')
+        year = request.query_params.get('year')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+
+        if not enrollment_id:
+            return Response({'error': 'enrollment_id required'}, status=400)
+
+        qs = AttendanceRecord.objects.filter(enrollment_id=enrollment_id)
+        if month and year:
+            qs = qs.filter(date__month=month, date__year=year)
+        elif date_from and date_to:
+            qs = qs.filter(date__gte=date_from, date__lte=date_to)
+
+        records = list(qs.order_by('date').values('date', 'present', 'session_type', 'hours'))
+        total = len(records)
+        present_count = sum(1 for r in records if r['present'])
+        pct = round(present_count / total * 100, 1) if total > 0 else 0
+
+        return Response({
+            'total_sessions': total,
+            'present': present_count,
+            'absent': total - present_count,
+            'attendance_pct': pct,
+            'records': records,
+        })
 
     @action(detail=False, methods=['post'])
     def bulk_camp_entry(self, request):
@@ -294,11 +424,79 @@ class TrainerAttendanceViewSet(viewsets.ModelViewSet):
         trainer_id = self.request.query_params.get('trainer')
         if trainer_id:
             qs = qs.filter(trainer_id=trainer_id)
+        batch_id = self.request.query_params.get('batch')
+        if batch_id:
+            qs = qs.filter(batch_id=batch_id)
+        date_str = self.request.query_params.get('date')
+        if date_str:
+            qs = qs.filter(date=date_str)
         month = self.request.query_params.get('month')
         year = self.request.query_params.get('year')
         if month and year:
             qs = qs.filter(date__month=month, date__year=year)
         return qs
+
+    @action(detail=False, methods=['post'])
+    def bulk_entry(self, request):
+        """
+        Bulk trainer attendance entry for a batch on a given date.
+        Body: { batch_id, date, records: [{trainer_id, present, cancelled_by_trainer, hours_logged}] }
+        """
+        batch_id = request.data.get('batch_id')
+        date_str = request.data.get('date')
+        records = request.data.get('records', [])
+
+        if not batch_id or not date_str:
+            return Response({'error': 'batch_id and date required'}, status=400)
+
+        results = []
+        for rec in records:
+            trainer_id = rec.get('trainer_id')
+            present = rec.get('present', True)
+            cancelled = rec.get('cancelled_by_trainer', False)
+            hours = rec.get('hours_logged', 0)
+            obj, _ = TrainerAttendance.objects.update_or_create(
+                trainer_id=trainer_id,
+                batch_id=batch_id,
+                date=date_str,
+                defaults={'present': present, 'cancelled_by_trainer': cancelled, 'hours_logged': hours}
+            )
+            results.append(TrainerAttendanceSerializer(obj).data)
+        return Response(results)
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """
+        Attendance summary for a trainer over a date range or month.
+        Params: trainer_id, month, year (or date_from + date_to)
+        """
+        trainer_id = request.query_params.get('trainer_id')
+        month = request.query_params.get('month')
+        year = request.query_params.get('year')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+
+        if not trainer_id:
+            return Response({'error': 'trainer_id required'}, status=400)
+
+        qs = TrainerAttendance.objects.filter(trainer_id=trainer_id)
+        if month and year:
+            qs = qs.filter(date__month=month, date__year=year)
+        elif date_from and date_to:
+            qs = qs.filter(date__gte=date_from, date__lte=date_to)
+
+        records = list(qs.order_by('date').values('date', 'present', 'cancelled_by_trainer', 'hours_logged', 'batch_id'))
+        total = len(records)
+        present_count = sum(1 for r in records if r['present'])
+        pct = round(present_count / total * 100, 1) if total > 0 else 0
+
+        return Response({
+            'total_sessions': total,
+            'present': present_count,
+            'absent': total - present_count,
+            'attendance_pct': pct,
+            'records': records,
+        })
 
 
 class PaymentCycleViewSet(viewsets.ModelViewSet):

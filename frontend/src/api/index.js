@@ -61,6 +61,7 @@ export const trainersAPI = {
   list: (params) => api.get('/trainers/', { params }),
   get: (id) => api.get(`/trainers/${id}/`),
   create: (data) => api.post('/trainers/', data),
+  createWithUser: (data) => api.post('/trainers/create_with_user/', data),
   update: (id, data) => api.patch(`/trainers/${id}/`, data),
   stats: (id) => api.get(`/trainers/${id}/stats/`),
 };
@@ -79,6 +80,7 @@ export const enrollmentsAPI = {
   list: (params) => api.get('/enrollments/', { params }),
   create: (data) => api.post('/enrollments/', data),
   update: (id, data) => api.patch(`/enrollments/${id}/`, data),
+  deactivate: (id, data) => api.post(`/enrollments/${id}/deactivate/`, data),
 };
 
 // Camps
@@ -101,6 +103,14 @@ export const attendanceAPI = {
   list: (params) => api.get('/attendance/', { params }),
   bulkEntry: (data) => api.post('/attendance/bulk_entry/', data),
   bulkCampEntry: (data) => api.post('/attendance/bulk_camp_entry/', data),
+  studentSummary: (params) => api.get('/attendance/student_summary/', { params }),
+};
+
+// Trainer Attendance
+export const trainerAttendanceAPI = {
+  list: (params) => api.get('/trainer-attendance/', { params }),
+  bulkEntry: (data) => api.post('/trainer-attendance/bulk_entry/', data),
+  summary: (params) => api.get('/trainer-attendance/summary/', { params }),
 };
 
 // Payment Cycles

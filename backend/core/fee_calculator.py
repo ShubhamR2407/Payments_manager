@@ -69,8 +69,9 @@ def _calc_advanced_fee(enrollment, batch, month, year):
 
 
 def _calc_elo_fee(enrollment, batch, month, year):
-    """Residential/Individual/HomeTutor: days_attended * EloRateTier rate."""
+    """Residential: days * rate_per_day. Individual/HomeTutor: hours * rate_per_hour."""
     from core.models import AttendanceRecord, EloRateTier
+    from django.db.models import Q, Sum
     trainer_elo = batch.trainer.elo_rating
     session_type_map = {
         'residential': 'residential',
@@ -79,8 +80,6 @@ def _calc_elo_fee(enrollment, batch, month, year):
     }
     session_type = session_type_map.get(batch.batch_type, 'individual')
 
-    # Find matching EloRateTier
-    from django.db.models import Q
     tier = EloRateTier.objects.filter(
         session_type=session_type,
         elo_min__lte=trainer_elo
@@ -89,11 +88,13 @@ def _calc_elo_fee(enrollment, batch, month, year):
     ).first()
 
     if not tier:
-        # Fallback: highest tier for session type
         tier = EloRateTier.objects.filter(session_type=session_type).order_by('-elo_min').first()
 
     if not tier:
         return Decimal('0')
+
+    if enrollment.fee_override is not None:
+        return Decimal(str(enrollment.fee_override))
 
     records = AttendanceRecord.objects.filter(
         enrollment=enrollment,
@@ -101,9 +102,12 @@ def _calc_elo_fee(enrollment, batch, month, year):
         date__month=month,
         present=True
     )
+
+    if batch.batch_type in ('individual', 'home_tutoring') and tier.rate_per_hour:
+        total_hours = records.aggregate(total=Sum('hours'))['total'] or Decimal('0')
+        return Decimal(str(tier.rate_per_hour)) * Decimal(str(total_hours))
+
     days_attended = records.count()
-    if enrollment.fee_override is not None:
-        return Decimal(str(enrollment.fee_override))
     return Decimal(str(tier.rate_per_day)) * days_attended
 
 

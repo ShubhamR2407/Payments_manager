@@ -122,6 +122,13 @@ html, body, #root { height: 100%; font-family: -apple-system, BlinkMacSystemFont
 .btn-danger { background: var(--danger); color: white; }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 .btn-full { width: 100%; justify-content: center; }
+.btn-danger:hover:not(:disabled) { background: #b02a37; }
+
+/* Tab Bar */
+.tab-bar { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 1.5rem; }
+.tab-btn { background: none; border: none; padding: 10px 20px; font-size: 14px; cursor: pointer; color: var(--text-muted); border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color 0.2s, border-color 0.2s; }
+.tab-btn:hover { color: var(--primary); }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
 
 /* =====================
    Badges

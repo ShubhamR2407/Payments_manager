@@ -5,13 +5,16 @@ import { attendanceAPI } from '../api';
 export default function AttendanceGrid({ enrollments, existingRecords, batchId, date, batchType }) {
   const qc = useQueryClient();
 
-  // Build initial state from existing records
+  const isAdvanced = batchType === 'advanced';
+  const isHourly = batchType === 'individual' || batchType === 'home_tutoring';
+
   const initialState = {};
   enrollments?.forEach(e => {
     const rec = existingRecords?.find(r => r.enrollment === e.id);
     initialState[e.id] = {
       present: rec?.present ?? false,
       session_type: rec?.session_type ?? 'full',
+      hours: rec?.hours ?? '',
     };
   });
 
@@ -19,9 +22,7 @@ export default function AttendanceGrid({ enrollments, existingRecords, batchId, 
 
   const mutation = useMutation({
     mutationFn: (records) => attendanceAPI.bulkEntry({ batch_id: batchId, date, records }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['attendance'] });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance'] }),
   });
 
   const toggle = (enrollmentId) => {
@@ -32,10 +33,11 @@ export default function AttendanceGrid({ enrollments, existingRecords, batchId, 
   };
 
   const setSessionType = (enrollmentId, type) => {
-    setAttendance(prev => ({
-      ...prev,
-      [enrollmentId]: { ...prev[enrollmentId], session_type: type }
-    }));
+    setAttendance(prev => ({ ...prev, [enrollmentId]: { ...prev[enrollmentId], session_type: type } }));
+  };
+
+  const setHours = (enrollmentId, hours) => {
+    setAttendance(prev => ({ ...prev, [enrollmentId]: { ...prev[enrollmentId], hours } }));
   };
 
   const save = () => {
@@ -43,19 +45,16 @@ export default function AttendanceGrid({ enrollments, existingRecords, batchId, 
       enrollment_id: parseInt(enrollment_id),
       present: val.present,
       session_type: val.session_type || 'full',
+      hours: val.hours !== '' ? parseFloat(val.hours) : null,
     }));
     mutation.mutate(records);
   };
 
   const markAll = (present) => {
     const next = {};
-    enrollments?.forEach(e => {
-      next[e.id] = { ...attendance[e.id], present };
-    });
+    enrollments?.forEach(e => { next[e.id] = { ...attendance[e.id], present }; });
     setAttendance(next);
   };
-
-  const isAdvanced = batchType === 'advanced';
 
   return (
     <div className="attendance-grid">
@@ -71,6 +70,7 @@ export default function AttendanceGrid({ enrollments, existingRecords, batchId, 
               <th>Student</th>
               <th>Present</th>
               {isAdvanced && <th>Session</th>}
+              {isHourly && <th>Hours</th>}
             </tr>
           </thead>
           <tbody>
@@ -94,9 +94,23 @@ export default function AttendanceGrid({ enrollments, existingRecords, batchId, 
                       onChange={(ev) => setSessionType(e.id, ev.target.value)}
                       disabled={!attendance[e.id]?.present}
                     >
-                      <option value="full">Full Day</option>
-                      <option value="half">Half Day</option>
+                      <option value="full">Full (₹1000)</option>
+                      <option value="half">Half (₹500)</option>
                     </select>
+                  </td>
+                )}
+                {isHourly && (
+                  <td>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      style={{ width: '70px' }}
+                      placeholder="hrs"
+                      value={attendance[e.id]?.hours ?? ''}
+                      onChange={(ev) => setHours(e.id, ev.target.value)}
+                      disabled={!attendance[e.id]?.present}
+                    />
                   </td>
                 )}
               </tr>
@@ -109,11 +123,7 @@ export default function AttendanceGrid({ enrollments, existingRecords, batchId, 
         <span className="attendance-summary">
           {Object.values(attendance).filter(v => v.present).length} / {enrollments?.length || 0} present
         </span>
-        <button
-          className="btn btn-primary"
-          onClick={save}
-          disabled={mutation.isPending}
-        >
+        <button className="btn btn-primary" onClick={save} disabled={mutation.isPending}>
           {mutation.isPending ? 'Saving...' : 'Save Attendance'}
         </button>
         {mutation.isSuccess && <span className="success-text">Saved!</span>}

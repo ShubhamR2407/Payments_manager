@@ -10,7 +10,8 @@ export default function Students() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({
-    name: '', parent_name: '', phone: '', whatsapp_number: '', join_date: dayjs().format('YYYY-MM-DD'), is_active: true
+    name: '', parent_name: '', phone: '', whatsapp_number: '', join_date: dayjs().format('YYYY-MM-DD'),
+    is_active: true, dob: '', city: '', address: '', elo_rating: ''
   });
 
   const { data, isLoading } = useQuery({
@@ -23,11 +24,16 @@ export default function Students() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['students'] }); setShowForm(false); setEditing(null); resetForm(); },
   });
 
-  const resetForm = () => setForm({ name: '', parent_name: '', phone: '', whatsapp_number: '', join_date: dayjs().format('YYYY-MM-DD'), is_active: true });
+  const resetForm = () => setForm({ name: '', parent_name: '', phone: '', whatsapp_number: '', join_date: dayjs().format('YYYY-MM-DD'), is_active: true, dob: '', city: '', address: '', elo_rating: '' });
 
   const openEdit = (student) => {
     setEditing(student);
-    setForm({ name: student.name, parent_name: student.parent_name, phone: student.phone, whatsapp_number: student.whatsapp_number, join_date: student.join_date, is_active: student.is_active });
+    setForm({
+      name: student.name, parent_name: student.parent_name, phone: student.phone,
+      whatsapp_number: student.whatsapp_number, join_date: student.join_date, is_active: student.is_active,
+      dob: student.dob || '', city: student.city || '', address: student.address || '',
+      elo_rating: student.elo_rating || ''
+    });
     setShowForm(true);
   };
 
@@ -72,6 +78,22 @@ export default function Students() {
                 <div className="form-group">
                   <label>Join Date</label>
                   <input type="date" value={form.join_date} onChange={e => setForm(f => ({ ...f, join_date: e.target.value }))} required />
+                </div>
+                <div className="form-group">
+                  <label>Date of Birth</label>
+                  <input type="date" value={form.dob} onChange={e => setForm(f => ({ ...f, dob: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label>City / Town</label>
+                  <input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label>Address (optional)</label>
+                  <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label>ELO Rating (optional)</label>
+                  <input type="number" value={form.elo_rating} onChange={e => setForm(f => ({ ...f, elo_rating: e.target.value }))} placeholder="e.g. 1200" />
                 </div>
                 <div className="form-group">
                   <label>

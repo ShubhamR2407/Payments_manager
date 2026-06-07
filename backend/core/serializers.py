@@ -34,7 +34,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
 class EloRateTierSerializer(serializers.ModelSerializer):
     class Meta:
         model = EloRateTier
-        fields = '__all__'
+        fields = ['id', 'session_type', 'elo_min', 'elo_max', 'rate_per_day', 'rate_per_hour']
 
 
 class TrainerSerializer(serializers.ModelSerializer):
@@ -58,7 +58,8 @@ class StudentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Student
-        fields = ['id', 'name', 'parent_name', 'phone', 'whatsapp_number', 'join_date', 'is_active', 'total_due', 'total_paid']
+        fields = ['id', 'name', 'parent_name', 'phone', 'whatsapp_number', 'join_date', 'is_active',
+                  'dob', 'city', 'address', 'elo_rating', 'total_due', 'total_paid']
 
     def get_total_due(self, obj):
         from django.db.models import Sum
@@ -103,10 +104,15 @@ class BatchSerializer(serializers.ModelSerializer):
 class EnrollmentSerializer(serializers.ModelSerializer):
     student_name = serializers.SerializerMethodField()
     batch_name = serializers.SerializerMethodField()
+    batch_type = serializers.SerializerMethodField()
 
     class Meta:
         model = Enrollment
-        fields = ['id', 'student', 'student_name', 'batch', 'batch_name', 'join_date', 'is_active', 'fee_override']
+        fields = ['id', 'student', 'student_name', 'batch', 'batch_name', 'batch_type',
+                  'join_date', 'is_active', 'deactivation_date', 'fee_override']
+
+    def get_batch_type(self, obj):
+        return obj.batch.batch_type
 
     def get_student_name(self, obj):
         return obj.student.name
@@ -149,7 +155,7 @@ class CampEnrollmentSerializer(serializers.ModelSerializer):
 class AttendanceRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = AttendanceRecord
-        fields = ['id', 'enrollment', 'camp_enrollment', 'date', 'present', 'session_type']
+        fields = ['id', 'enrollment', 'camp_enrollment', 'date', 'present', 'session_type', 'hours']
 
 
 class TrainerAttendanceSerializer(serializers.ModelSerializer):

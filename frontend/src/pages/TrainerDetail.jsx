@@ -1,9 +1,10 @@
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { trainersAPI } from '../api';
 
 export default function TrainerDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
 
   const { data: trainer } = useQuery({
     queryKey: ['trainer', id],
@@ -20,7 +21,10 @@ export default function TrainerDetail() {
   return (
     <div className="page">
       <div className="page-header">
-        <h2>{trainer.full_name}</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate(-1)}>← Back</button>
+          <h2>{trainer.full_name}</h2>
+        </div>
         <span className={`badge ${trainer.is_active ? 'badge-green' : 'badge-gray'}`}>
           {trainer.is_active ? 'Active' : 'Inactive'}
         </span>
